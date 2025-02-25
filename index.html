@@ -55,6 +55,10 @@
         button:hover {
             background-color: #005fa3;
         }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
         #result {
             margin-top: 20px;
             padding: 15px;
@@ -87,20 +91,40 @@
             border: 1px solid #ddd;
             border-radius: 5px;
         }
+        #loading {
+            text-align: center;
+            margin: 10px 0;
+        }
+        .spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(0,0,0,.3);
+            border-radius: 50%;
+            border-top-color: #0078d7;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Mikrotik Hotspot QR Scanner</h1>
         
-        <div id="status">Ready to scan</div>
+        <div id="status">Loading libraries...</div>
+        
+        <div id="loading">
+            <div class="spinner"></div>
+        </div>
         
         <div id="video-container">
             <video id="qr-video" playsinline></video>
         </div>
         <canvas id="canvas"></canvas>
         
-        <button id="start-camera">Start Camera</button>
+        <button id="start-camera" disabled>Start Camera</button>
         <button id="stop-camera" class="hidden">Stop Camera</button>
         
         <div id="result" class="hidden">
@@ -113,9 +137,51 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        // First, ensure jsQR is loaded properly
+        function loadScript(url) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = url;
+                script.onload = () => resolve();
+                script.onerror = () => reject(new Error(`Failed to load script: ${url}`));
+                document.head.appendChild(script);
+            });
+        }
+
+        // Main app function
+        async function initApp() {
+            const loadingDiv = document.getElementById('loading');
+            const statusDiv = document.getElementById('status');
+            const startButton = document.getElementById('start-camera');
+
+            try {
+                // Load jsQR library
+                statusDiv.textContent = 'Loading QR scanning library...';
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js');
+                
+                // Check if jsQR is loaded correctly
+                if (typeof jsQR !== 'function') {
+                    throw new Error('jsQR library not loaded correctly');
+                }
+                
+                statusDiv.textContent = 'Ready to scan';
+                loadingDiv.classList.add('hidden');
+                startButton.disabled = false;
+                
+                // Initialize app components
+                initQRScanner();
+                
+            } catch (error) {
+                console.error('Initialization error:', error);
+                statusDiv.textContent = `Error: ${error.message}. Try refreshing the page.`;
+                statusDiv.className = 'error';
+                loadingDiv.classList.add('hidden');
+            }
+        }
+
+        // QR scanner functionality
+        function initQRScanner() {
             const video = document.getElementById('qr-video');
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
@@ -137,6 +203,11 @@
                     statusDiv.textContent = 'Requesting camera access...';
                     statusDiv.className = '';
                     
+                    // Check if MediaDevices API is available
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        throw new Error('Camera access is not supported in your browser');
+                    }
+                    
                     // Get camera stream with appropriate settings for mobile devices
                     const constraints = {
                         video: {
@@ -150,19 +221,31 @@
                     video.srcObject = stream;
                     video.setAttribute('playsinline', true); // Required for iOS Safari
                     
-                    await video.play();
+                    // Handle video loading
+                    video.onloadedmetadata = function() {
+                        video.play().then(() => {
+                            // Set canvas size to match video dimensions
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+                            
+                            startButton.classList.add('hidden');
+                            stopButton.classList.remove('hidden');
+                            resultDiv.classList.add('hidden');
+                            statusDiv.textContent = 'Scanning for QR code...';
+                            
+                            scanning = true;
+                            scanQRCode();
+                        }).catch(error => {
+                            console.error('Error playing video:', error);
+                            statusDiv.textContent = 'Error starting video: ' + error.message;
+                            statusDiv.className = 'error';
+                        });
+                    };
                     
-                    // Set canvas size to match video dimensions
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    
-                    startButton.classList.add('hidden');
-                    stopButton.classList.remove('hidden');
-                    resultDiv.classList.add('hidden');
-                    statusDiv.textContent = 'Scanning for QR code...';
-                    
-                    scanning = true;
-                    scanQRCode();
+                    video.onerror = function() {
+                        statusDiv.textContent = 'Video error occurred';
+                        statusDiv.className = 'error';
+                    };
                     
                 } catch (error) {
                     console.error('Error accessing camera:', error);
@@ -189,32 +272,39 @@
                 if (!scanning) return;
                 
                 if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                    // Draw current video frame to canvas for processing
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    
-                    // Process image using jsQR
-                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                        inversionAttempts: "dontInvert"
-                    });
-                    
-                    if (code) {
-                        // QR code found
-                        console.log("QR code detected:", code.data);
-                        statusDiv.textContent = 'QR code found!';
-                        statusDiv.className = 'success';
+                    try {
+                        // Draw current video frame to canvas for processing
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                         
-                        // Stop camera after successful scan
-                        if (stream) {
-                            stream.getTracks().forEach(track => track.stop());
-                            video.srcObject = null;
+                        // Process image using jsQR
+                        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                            inversionAttempts: "dontInvert"
+                        });
+                        
+                        if (code) {
+                            // QR code found
+                            console.log("QR code detected:", code.data);
+                            statusDiv.textContent = 'QR code found!';
+                            statusDiv.className = 'success';
+                            
+                            // Stop camera after successful scan
+                            if (stream) {
+                                stream.getTracks().forEach(track => track.stop());
+                                video.srcObject = null;
+                            }
+                            scanning = false;
+                            stopButton.classList.add('hidden');
+                            startButton.classList.remove('hidden');
+                            
+                            // Process the QR code data
+                            processQRData(code.data);
                         }
+                    } catch (error) {
+                        console.error('Error processing frame:', error);
+                        statusDiv.textContent = 'Error scanning: ' + error.message;
+                        statusDiv.className = 'error';
                         scanning = false;
-                        stopButton.classList.add('hidden');
-                        startButton.classList.remove('hidden');
-                        
-                        // Process the QR code data
-                        processQRData(code.data);
                     }
                 }
                 
@@ -304,7 +394,10 @@
                 statusDiv.textContent = 'Login form submitted';
                 statusDiv.className = 'success';
             });
-        });
+        }
+
+        // Start the application
+        document.addEventListener('DOMContentLoaded', initApp);
     </script>
 </body>
 </html>
