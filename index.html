@@ -1,79 +1,103 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MikroTik Hotspot Login via QR</title>
-    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 20px;
-        }
-        #reader {
-            width: 300px;
-            margin: auto;
-        }
-        #login-status {
-            margin-top: 10px;
-            font-size: 18px;
-            font-weight: bold;
-            color: green;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>MikroTik Hotspot Login via QR</title>
+  <!-- Include html5-qrcode library -->
+  <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    #reader {
+      width: 300px;
+      margin: 20px auto;
+    }
+    #login-status {
+      margin-top: 20px;
+      font-size: 18px;
+      color: #333;
+    }
+  </style>
 </head>
 <body>
+  <h2>MikroTik Hotspot Login via QR Code</h2>
+  <div id="reader"></div>
+  <div id="login-status"></div>
 
-    <h2>Scan QR Code to Login to MikroTik Hotspot</h2>
-    <div id="reader"></div>
-    <div id="login-status"></div>
+  <script>
+    // Callback: Called when a QR code is successfully scanned
+    function onScanSuccess(decodedText, decodedResult) {
+      console.log("QR Code detected: ", decodedText);
+      // Stop scanning immediately after a code is detected
+      html5QrCode.stop().then(() => {
+        document.getElementById("login-status").innerText = "QR Code scanned! Processing login...";
+        processLogin(decodedText);
+      }).catch(err => {
+        console.error("Error stopping the scanner: ", err);
+      });
+    }
 
-    <script>
-        function startScanner() {
-            let scanner = new Html5Qrcode("reader");
+    // Callback: Called on scanning errors (e.g., no QR in view)
+    function onScanError(errorMessage) {
+      // You can display or log errors if needed
+      console.warn("QR Scan error:", errorMessage);
+    }
 
-            scanner.start(
-                { facingMode: "environment" }, 
-                { fps: 10, qrbox: 250 },
-                (decodedText) => {
-                    console.log("QR Code detected: " + decodedText);
-                    scanner.stop();
-                    document.getElementById("login-status").innerText = "QR Scanned! Logging in...";
-                    login(decodedText);
-                },
-                (errorMessage) => { /* Ignore scanning errors */ }
-            ).catch(err => console.error("QR Scanner error:", err));
+    // Create an instance of the scanner targeting the 'reader' element
+    let html5QrCode = new Html5Qrcode("reader");
+    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+    // Start scanning using the rear camera
+    html5QrCode.start(
+      { facingMode: "environment" },
+      config,
+      onScanSuccess,
+      onScanError
+    ).catch(err => {
+      console.error("Unable to start scanning:", err);
+      document.getElementById("login-status").innerText = "Unable to access camera: " + err;
+    });
+
+    // Process the QR data for login
+    function processLogin(qrData) {
+      // If the QR data is a URL, assume it's a direct login link
+      if (qrData.startsWith("http")) {
+        window.location.href = qrData;
+      } else {
+        // Otherwise, assume the QR data is formatted as "username,password"
+        let credentials = qrData.split(',');
+        if (credentials.length < 2) {
+          document.getElementById("login-status").innerText = "Invalid QR code format!";
+          return;
         }
+        let username = credentials[0].trim();
+        let password = credentials[1].trim();
+        
+        // Replace with your MikroTik hotspot login URL
+        const loginUrl = "http://192.168.88.1/login";
 
-        function login(qrData) {
-            if (qrData.startsWith("http")) {
-                // If QR contains a direct login URL
-                window.location.href = qrData;
-            } else {
-                // If QR contains username & password (format: "username,password")
-                let [username, password] = qrData.split(',');
-                let loginUrl = "http://192.168.88.1/login";  // Change to your MikroTik login URL
-                
-                let formData = new FormData();
-                formData.append("username", username);
-                formData.append("password", password);
+        // Create a FormData object with the login credentials
+        let formData = new FormData();
+        formData.append("username", username);
+        formData.append("password", password);
 
-                fetch(loginUrl, {
-                    method: "POST",
-                    body: formData,
-                    mode: "no-cors"  // Needed for MikroTik's response
-                }).then(() => {
-                    document.getElementById("login-status").innerText = "Login Successful! Redirecting...";
-                    setTimeout(() => window.location.href = loginUrl, 2000);
-                }).catch(() => {
-                    document.getElementById("login-status").innerText = "Login Failed!";
-                });
-            }
-        }
-
-        window.onload = startScanner;
-    </script>
-
+        // Send a POST request to the hotspot login URL
+        fetch(loginUrl, {
+          method: "POST",
+          body: formData,
+          mode: "no-cors"  // Note: 'no-cors' is used to bypass CORS restrictions; you may need to adjust for your environment.
+        }).then(response => {
+          // Due to no-cors mode, you won't get full response details.
+          document.getElementById("login-status").innerText = "Login attempt sent!";
+        }).catch(error => {
+          console.error("Login error:", error);
+          document.getElementById("login-status").innerText = "Login failed: " + error;
+        });
+      }
+    }
+  </script>
 </body>
 </html>
