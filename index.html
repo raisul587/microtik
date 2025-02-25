@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mikrotik Hotspot QR Scanner (Standalone)</title>
+    <title>Mikrotik Login Camera</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -37,9 +37,6 @@
             height: auto;
             display: block;
         }
-        #canvas {
-            display: none;
-        }
         button {
             display: block;
             margin: 15px auto;
@@ -54,20 +51,6 @@
         }
         button:hover {
             background-color: #005fa3;
-        }
-        button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
-        }
-        #result {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 5px;
-            background-color: #f8f8f8;
-            word-break: break-all;
-        }
-        .hidden {
-            display: none;
         }
         #status {
             text-align: center;
@@ -91,348 +74,160 @@
             border: 1px solid #ddd;
             border-radius: 5px;
         }
-        #manual-entry {
-            margin-top: 20px;
-            padding: 10px;
-            border-top: 1px solid #ddd;
-        }
-        #manual-entry h3 {
-            margin-top: 0;
-        }
-        #fallback-option {
-            text-align: center;
-            margin: 20px 0;
-            padding: 10px;
-            background-color: #f5f5f5;
-            border-radius: 5px;
+        .hidden {
+            display: none;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Mikrotik Hotspot QR Scanner</h1>
+        <h1>Mikrotik Login Camera</h1>
         
-        <div id="status">Ready to scan</div>
+        <div id="status">Ready to start</div>
         
         <div id="video-container">
-            <video id="qr-video" playsinline></video>
+            <video id="qr-video" playsinline autoplay></video>
         </div>
-        <canvas id="canvas"></canvas>
         
         <button id="start-camera">Start Camera</button>
         <button id="stop-camera" class="hidden">Stop Camera</button>
         
-        <div id="result" class="hidden">
-            <div id="qr-data"></div>
-            <div id="login-form">
-                <input type="text" id="username" placeholder="Username">
-                <input type="password" id="password" placeholder="Password">
-                <button id="login-button">Login to Hotspot</button>
-            </div>
-        </div>
-        
-        <div id="fallback-option" class="hidden">
-            <p>Having trouble with the QR scanner?</p>
-            <button id="show-manual">Enter Credentials Manually</button>
-        </div>
-        
-        <div id="manual-entry" class="hidden">
-            <h3>Manual Login</h3>
-            <input type="text" id="manual-username" placeholder="Username">
-            <input type="password" id="manual-password" placeholder="Password">
-            <input type="text" id="login-url" placeholder="Login URL (optional, e.g. http://10.5.50.1/login)">
-            <button id="manual-login">Login to Hotspot</button>
+        <div id="login-form">
+            <h3>Hotspot Login</h3>
+            <input type="text" id="username" placeholder="Username">
+            <input type="password" id="password" placeholder="Password">
+            <input type="text" id="login-url" value="http://hotspot.login/" placeholder="Login URL">
+            <button id="login-button">Login to Hotspot</button>
         </div>
     </div>
-
+    
     <script>
-        // Simplified QR code scanner function without external libraries
-        // This is a basic implementation that works with high-contrast QR codes
-        function scanQRFromCanvas(imageData, width, height) {
-            const statusDiv = document.getElementById('status');
-            
-            // This is where we would normally use jsQR to decode the QR code
-            // Since we can't rely on external libraries, we'll show a message
-            // and provide manual entry option
-            
-            statusDiv.textContent = 'QR library unavailable. Please enter credentials manually.';
-            statusDiv.className = 'error';
-            
-            document.getElementById('fallback-option').classList.remove('hidden');
-            document.getElementById('stop-camera').click(); // Stop the camera
-            
-            return null; // No QR code detected
-        }
-
-        // Main application code
         document.addEventListener('DOMContentLoaded', function() {
             const video = document.getElementById('qr-video');
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
             const startButton = document.getElementById('start-camera');
             const stopButton = document.getElementById('stop-camera');
-            const resultDiv = document.getElementById('result');
-            const qrDataDiv = document.getElementById('qr-data');
             const statusDiv = document.getElementById('status');
-            const usernameInput = document.getElementById('username');
-            const passwordInput = document.getElementById('password');
             const loginButton = document.getElementById('login-button');
-            const showManualButton = document.getElementById('show-manual');
-            const manualEntryDiv = document.getElementById('manual-entry');
-            const manualLoginButton = document.getElementById('manual-login');
-            const fallbackOptionDiv = document.getElementById('fallback-option');
             
-            let scanning = false;
             let stream = null;
             
-            // Check camera support first
+            // Basic browser feature detection
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                statusDiv.textContent = 'Camera not supported in this browser';
+                statusDiv.textContent = 'Camera API not supported in this browser';
                 statusDiv.className = 'error';
                 startButton.disabled = true;
-                fallbackOptionDiv.classList.remove('hidden');
                 return;
             }
             
-            // Start the camera
+            // Start camera button
             startButton.addEventListener('click', async function() {
                 try {
                     statusDiv.textContent = 'Requesting camera access...';
-                    statusDiv.className = '';
                     
-                    // Get camera stream
+                    // Request camera with specific constraints for mobile
                     const constraints = {
                         video: {
-                            facingMode: 'environment', // Use back camera if available
+                            facingMode: 'environment',
                             width: { ideal: 1280 },
                             height: { ideal: 720 }
                         }
                     };
                     
+                    // Get media stream
                     stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    
+                    // Connect stream to video element
                     video.srcObject = stream;
-                    video.setAttribute('playsinline', true); // Required for iOS Safari
                     
-                    // Handle video loading
-                    video.onloadedmetadata = function() {
-                        video.play().then(() => {
-                            // Set canvas size to match video dimensions
-                            canvas.width = video.videoWidth;
-                            canvas.height = video.videoHeight;
-                            
-                            startButton.classList.add('hidden');
-                            stopButton.classList.remove('hidden');
-                            resultDiv.classList.add('hidden');
-                            manualEntryDiv.classList.add('hidden');
-                            statusDiv.textContent = 'Scanning for QR code...';
-                            
-                            scanning = true;
-                            scanQRCode();
-                        }).catch(error => {
-                            console.error('Error playing video:', error);
-                            statusDiv.textContent = 'Error starting video: ' + error.message;
-                            statusDiv.className = 'error';
-                            fallbackOptionDiv.classList.remove('hidden');
-                        });
-                    };
+                    // Ensure proper video display on iOS
+                    video.setAttribute('playsinline', true);
+                    video.setAttribute('autoplay', true);
                     
-                    video.onerror = function() {
-                        statusDiv.textContent = 'Video error occurred';
-                        statusDiv.className = 'error';
-                        fallbackOptionDiv.classList.remove('hidden');
-                    };
+                    // Show success message
+                    statusDiv.textContent = 'Camera started';
+                    statusDiv.className = 'success';
+                    
+                    // Update UI
+                    startButton.classList.add('hidden');
+                    stopButton.classList.remove('hidden');
                     
                 } catch (error) {
-                    console.error('Error accessing camera:', error);
-                    statusDiv.textContent = 'Camera access failed: ' + error.message;
+                    console.error('Camera error:', error);
+                    statusDiv.textContent = 'Camera error: ' + error.message;
                     statusDiv.className = 'error';
-                    fallbackOptionDiv.classList.remove('hidden');
                 }
             });
             
-            // Stop the camera
+            // Stop camera button
             stopButton.addEventListener('click', function() {
                 if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
+                    // Stop all tracks
+                    stream.getTracks().forEach(track => {
+                        track.stop();
+                    });
                     video.srcObject = null;
                 }
                 
-                scanning = false;
+                // Update UI
                 stopButton.classList.add('hidden');
                 startButton.classList.remove('hidden');
                 statusDiv.textContent = 'Camera stopped';
             });
             
-            // Process QR code scanning
-            function scanQRCode() {
-                if (!scanning) return;
+            // Login button
+            loginButton.addEventListener('click', function() {
+                const username = document.getElementById('username').value.trim();
+                const password = document.getElementById('password').value.trim();
+                const loginUrl = document.getElementById('login-url').value.trim();
                 
-                if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                    try {
-                        // Draw current video frame to canvas for processing
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                        
-                        // Try to process with our simplified scanner (would normally use jsQR)
-                        const code = scanQRFromCanvas(imageData.data, imageData.width, imageData.height);
-                        
-                        if (code) {
-                            // QR code found (this won't happen with our simplified scanner)
-                            console.log("QR code detected:", code.data);
-                            statusDiv.textContent = 'QR code found!';
-                            statusDiv.className = 'success';
-                            
-                            // Stop camera after successful scan
-                            if (stream) {
-                                stream.getTracks().forEach(track => track.stop());
-                                video.srcObject = null;
-                            }
-                            scanning = false;
-                            stopButton.classList.add('hidden');
-                            startButton.classList.remove('hidden');
-                            
-                            // Process the QR code data
-                            processQRData(code.data);
-                        }
-                    } catch (error) {
-                        console.error('Error processing frame:', error);
-                        statusDiv.textContent = 'Error scanning: ' + error.message;
-                        statusDiv.className = 'error';
-                        fallbackOptionDiv.classList.remove('hidden');
-                        scanning = false;
-                    }
-                }
-                
-                // Continue scanning
-                if (scanning) {
-                    requestAnimationFrame(scanQRCode);
-                }
-            }
-            
-            // Process the data from QR code
-            function processQRData(data) {
-                try {
-                    // Show the result div
-                    resultDiv.classList.remove('hidden');
-                    qrDataDiv.textContent = "QR Data: " + data;
-                    
-                    // Try to parse the QR code data
-                    if (data.includes('http')) {
-                        // If it's a URL, extract parameters or handle direct login
-                        const url = new URL(data);
-                        const params = new URLSearchParams(url.search);
-                        
-                        if (params.has('username') && params.has('password')) {
-                            usernameInput.value = params.get('username');
-                            passwordInput.value = params.get('password');
-                        }
-                        
-                        // Store the base URL for login
-                        loginButton.dataset.loginUrl = url.origin + url.pathname;
-                    } else if (data.includes(':')) {
-                        // If it's a username:password format
-                        const [username, password] = data.split(':');
-                        usernameInput.value = username;
-                        passwordInput.value = password;
-                    }
-                    
-                } catch (error) {
-                    console.error('Error processing QR data:', error);
-                    statusDiv.textContent = 'Error processing QR code: ' + error.message;
-                    statusDiv.className = 'error';
-                }
-            }
-            
-            // Show manual entry form
-            showManualButton.addEventListener('click', function() {
-                manualEntryDiv.classList.remove('hidden');
-                fallbackOptionDiv.classList.add('hidden');
-            });
-            
-            // Handle login button click
-            function performLogin(username, password, loginUrl) {
                 if (!username || !password) {
-                    statusDiv.textContent = 'Username and password are required';
+                    statusDiv.textContent = 'Username and password required';
                     statusDiv.className = 'error';
                     return;
                 }
                 
-                statusDiv.textContent = 'Attempting to login...';
-                
-                // Determine the login URL - try common Mikrotik URLs if not specified
-                let url = loginUrl || 'http://hotspot.login/';
-                
-                // Try multiple common URLs
-                const commonUrls = [
-                    url,
-                    'http://10.5.50.1/login',
-                    'http://192.168.1.1/login',
-                    'http://192.168.88.1/login',
-                    'http://10.1.0.1/login'
-                ];
-                
-                // Create a form for the first URL
-                submitLoginForm(username, password, commonUrls[0]);
-                
-                statusDiv.textContent = 'Login attempt sent';
-                statusDiv.className = 'success';
-            }
-            
-            // Submit the login form
-            function submitLoginForm(username, password, url) {
+                // Create and submit login form
                 const form = document.createElement('form');
                 form.method = 'POST';
-                form.action = url;
-                form.target = '_blank'; // Open in a new tab/window
+                form.action = loginUrl;
+                form.target = '_blank';
                 
-                // Common parameter names used by Mikrotik
-                const possibleUserFields = ['username', 'user', 'name', 'login'];
-                const possiblePassFields = ['password', 'pass', 'passwd'];
+                // Add username and password fields
+                const userField = document.createElement('input');
+                userField.type = 'hidden';
+                userField.name = 'username';
+                userField.value = username;
+                form.appendChild(userField);
                 
-                // Add all possible username fields
-                possibleUserFields.forEach(fieldName => {
-                    const field = document.createElement('input');
-                    field.type = 'hidden';
-                    field.name = fieldName;
-                    field.value = username;
-                    form.appendChild(field);
-                });
-                
-                // Add all possible password fields
-                possiblePassFields.forEach(fieldName => {
-                    const field = document.createElement('input');
-                    field.type = 'hidden';
-                    field.name = fieldName;
-                    field.value = password;
-                    form.appendChild(field);
-                });
+                const passField = document.createElement('input');
+                passField.type = 'hidden';
+                passField.name = 'password';
+                passField.value = password;
+                form.appendChild(passField);
                 
                 // Add to document and submit
                 document.body.appendChild(form);
                 form.submit();
                 document.body.removeChild(form);
-            }
-            
-            // Normal login button
-            loginButton.addEventListener('click', function() {
-                const username = usernameInput.value.trim();
-                const password = passwordInput.value.trim();
-                const loginUrl = loginButton.dataset.loginUrl;
                 
-                performLogin(username, password, loginUrl);
+                statusDiv.textContent = 'Login sent to ' + loginUrl;
+                statusDiv.className = 'success';
             });
             
-            // Manual login button
-            manualLoginButton.addEventListener('click', function() {
-                const username = document.getElementById('manual-username').value.trim();
-                const password = document.getElementById('manual-password').value.trim();
-                const loginUrl = document.getElementById('login-url').value.trim();
-                
-                performLogin(username, password, loginUrl);
+            // Add event listeners for video element
+            video.addEventListener('loadedmetadata', function() {
+                console.log('Video metadata loaded');
             });
             
-            // Show fallback option initially
-            fallbackOptionDiv.classList.remove('hidden');
+            video.addEventListener('play', function() {
+                console.log('Video playback started');
+            });
+            
+            video.addEventListener('error', function(e) {
+                console.error('Video error:', e);
+                statusDiv.textContent = 'Video error: ' + (video.error ? video.error.message : 'unknown error');
+                statusDiv.className = 'error';
+            });
         });
     </script>
 </body>
