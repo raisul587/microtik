@@ -1,100 +1,79 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta http-equiv="Content-type" content="text/html;charset=UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#000000" />
-    <title>MICROTIK QR CODE SCANNER</title>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MikroTik Hotspot Login via QR</title>
+    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
     <style>
-      body {
-        background-color: #000000;
-        color: #ffffff;
-      }
-      video {
-        width: 100% !important;
-        height: auto !important;
-      }
-      .btn {
-        margin-top: 5px;
-        margin-bottom: 10px;
-        padding: 5px;
-        background-color: #f2f2f2;
-        color: #000000;
-        border-radius: 3px;
-        width: 150px;
-        cursor: pointer;
-      }
-      .camera {
-        width: 95%;
-      }
-      a {
-        text-decoration: none;
-        color: #20a8d8;
-      }
-      @font-face {
-        font-family: "fontello";
-        src: url("./font/fontello.eot?14907215");
-        src: url("./font/fontello.eot?14907215#iefix") format("embedded-opentype"),
-             url("./font/fontello.woff?14907215") format("woff"),
-             url("./font/fontello.ttf?14907215") format("truetype"),
-             url("./font/fontello.svg?14907215#fontello") format("svg");
-        font-weight: normal;
-        font-style: normal;
-      }
-      .icon {
-        font-family: "fontello";
-        font-style: normal;
-        font-weight: normal;
-        speak: none;
-        display: inline-block;
-        text-decoration: inherit;
-        width: 1em;
-        margin-right: 0.2em;
-        text-align: center;
-        font-variant: normal;
-        text-transform: none;
-        line-height: 1em;
-        margin-left: 0.2em;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        #reader {
+            width: 300px;
+            margin: auto;
+        }
+        #login-status {
+            margin-top: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            color: green;
+        }
     </style>
-    <script type="text/javascript" src="llqrcode.js"></script>
-    <script type="text/javascript" src="mikhmon_webqr.js?v1"></script>
-    <script async src="https://arc.io/widget.min.js#rDZc6s4f"></script>
-  </head>
-  <body>
-    <center>
-      <div id="main">
-        <div id="mainbody">
-          <div class="camera" id="outdiv"></div>
-          <div style="display: table;">
-            <div style="display: table-row;">
-              <div style="display: table-cell; padding: 3px;">
-                <div class="btn" id="reload" onclick="location.reload();">
-                  <i class="icon icon-arrows-cw">&#xe800;</i> Reload Camera
-                </div>
-              </div>
-              <div style="display: table-cell; padding: 3px;">
-                <!-- <div class="btn" onclick="document.location = 'googlechrome://navigate?url=https://laksa19.github.io/myqr/';"></div> -->
-                <a
-                  class="btn"
-                  href="intent://laksa19.github.io/myqr#Intent;scheme=http;package=com.android.chrome;end"
-                >
-                  <i class="icon icon-chrome-1">&#xf268;</i> Open in Chrome
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div>
-        <br />Powered by <a> BRAIN MACHINE AI</a>
-      </div>
-    </center>
-    <canvas style="display: none;" id="qr-canvas" width="800" height="600"></canvas>
-    <script type="text/javascript">
-      load();
+</head>
+<body>
+
+    <h2>Scan QR Code to Login to MikroTik Hotspot</h2>
+    <div id="reader"></div>
+    <div id="login-status"></div>
+
+    <script>
+        function startScanner() {
+            let scanner = new Html5Qrcode("reader");
+
+            scanner.start(
+                { facingMode: "environment" }, 
+                { fps: 10, qrbox: 250 },
+                (decodedText) => {
+                    console.log("QR Code detected: " + decodedText);
+                    scanner.stop();
+                    document.getElementById("login-status").innerText = "QR Scanned! Logging in...";
+                    login(decodedText);
+                },
+                (errorMessage) => { /* Ignore scanning errors */ }
+            ).catch(err => console.error("QR Scanner error:", err));
+        }
+
+        function login(qrData) {
+            if (qrData.startsWith("http")) {
+                // If QR contains a direct login URL
+                window.location.href = qrData;
+            } else {
+                // If QR contains username & password (format: "username,password")
+                let [username, password] = qrData.split(',');
+                let loginUrl = "http://192.168.88.1/login";  // Change to your MikroTik login URL
+                
+                let formData = new FormData();
+                formData.append("username", username);
+                formData.append("password", password);
+
+                fetch(loginUrl, {
+                    method: "POST",
+                    body: formData,
+                    mode: "no-cors"  // Needed for MikroTik's response
+                }).then(() => {
+                    document.getElementById("login-status").innerText = "Login Successful! Redirecting...";
+                    setTimeout(() => window.location.href = loginUrl, 2000);
+                }).catch(() => {
+                    document.getElementById("login-status").innerText = "Login Failed!";
+                });
+            }
+        }
+
+        window.onload = startScanner;
     </script>
-  </body>
+
+</body>
 </html>
